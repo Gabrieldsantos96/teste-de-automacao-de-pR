@@ -19,27 +19,41 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Get list of modified files
+      - name: Get modified files
         id: files
         run: |
           FILES=$(git diff --name-only origin/main...HEAD --diff-filter=ACM)
           echo "files=$FILES" >> $GITHUB_OUTPUT
 
-      - name: Generate PR summary
-        id: pr_summary
+      - name: Collect file diffs
+        id: diffs
         run: |
-          echo "Generating PR summary..."
-          FILES="${{ steps.files.outputs.files }}"
-          CHANGES_COUNT=$(echo "$FILES" | wc -w)
-          SUMMARY="This PR modifies $CHANGES_COUNT file(s): $FILES. "
-          SUMMARY="$SUMMARY General impact: review for potential bugs, performance issues, and areas affected by these changes."
-          echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
+          DIFFS=$(git diff origin/main...HEAD)
+          echo "diffs<<EOF" >> $GITHUB_OUTPUT
+          echo "$DIFFS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Post PR summary as comment
+      - name: Send to OpenRouter
+        id: chatgpt
+        run: |
+          RESPONSE=$(curl -s https://openrouter.ai/api/v1/chat/completions \
+            -H "Authorization: Bearer ${{ secrets.AI_AGENT }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "model": "openai/gpt-4o-mini",
+              "messages": [
+                {"role": "system", "content": "Você é um analista de Pull Requests. Gere relatórios técnicos detalhados de forma clara e estruturada."},
+                {"role": "user", "content": "Analise este Pull Request. Gere:\n- Resumo geral das mudanças\n- Novas features\n- Impacto no sistema\n- Possíveis melhorias de código\n- Pontos de atenção em bugs/performance\n\nAqui estão os diffs:\n${{ steps.diffs.outputs.diffs }}"}
+              ]
+            }' | jq -r '.choices[0].message.content')
+
+          echo "report=$RESPONSE" >> $GITHUB_OUTPUT
+
+      - name: Post PR Analysis as comment
         uses: peter-evans/create-or-update-comment@v4
         with:
-          token: ${{ secrets.PR_ANALYZER }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           issue-number: ${{ github.event.pull_request.number }}
           body: |
-            ### PR Analyzer Summary
-            ${{ steps.pr_summary.outputs.summary }}
+            ## 🤖 PR Analyzer Report
+            ${{ steps.chatgpt.outputs.report }}
