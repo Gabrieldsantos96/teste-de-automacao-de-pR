@@ -13,6 +13,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Fetch main branch
+        run: git fetch origin main
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
@@ -36,7 +41,7 @@ jobs:
           echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
 
       - name: Post PR summary as comment
-        uses: peter-evans/create-or-update-comment@v5
+        uses: peter-evans/create-or-update-comment@v4
         with:
           token: ${{ secrets.PR_ANALYZER }}
           issue-number: ${{ github.event.pull_request.number }}
