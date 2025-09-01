@@ -11,42 +11,52 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout the base branch (main) with full history
+      # 1️⃣ Checkout da branch base (main) com histórico completo
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
           ref: main
           fetch-depth: 0
 
-      # 2️⃣ Fetch the PR head
+      # 2️⃣ Debug: Log do SHA do head do PR e informações do PR
+      - name: Log PR details
+        run: |
+          echo "PR Head SHA: ${{ github.event.pull_request.head.sha }}"
+          echo "PR Head Ref: ${{ github.event.pull_request.head.ref }}"
+          echo "PR Base SHA: ${{ github.event.pull_request.base.sha }}"
+          echo "PR Base Ref: ${{ github.event.pull_request.base.ref }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "PR Number: ${{ github.event.pull_request.number }}"
+
+      # 3️⃣ Buscar o head do PR
       - name: Fetch PR head
-        run: git fetch origin ${{ github.event.pull_request.head.sha }}:pr-head
+        run: |
+          git fetch origin ${{ github.event.pull_request.head.sha }}:pr-head || {
+            echo "Falha ao buscar o SHA do head do PR: ${{ github.event.pull_request.head.sha }}";
+            exit 1;
+          }
 
-      # 3️⃣ Setup Node.js (if still needed; appears unused in current workflow—consider removing if not required)
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-
-      # 4️⃣ Listar arquivos modificados (compare main to pr-head)
+      # 4️⃣ Listar arquivos modificados
       - name: Get modified files
         id: files
         run: |
-          FILES=$(git diff --name-only main...pr-head --diff-filter=ACM)
+          FILES=$(git diff --name-only main...pr-head --diff-filter=ACM || echo "Nenhum arquivo modificado")
+          echo "Arquivos modificados: $FILES"
           echo "files<<EOF" >> $GITHUB_OUTPUT
           echo "$FILES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # 5️⃣ Coletar diffs completos (compare main to pr-head)
+      # 5️⃣ Coletar diffs completos
       - name: Collect file diffs
         id: diffs
         run: |
-          DIFFS=$(git diff main...pr-head)
+          DIFFS=$(git diff main...pr-head || echo "Nenhum diff disponível")
+          echo "Diffs: $DIFFS"
           echo "diffs<<EOF" >> $GITHUB_OUTPUT
           echo "$DIFFS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      # 6️⃣ Enviar diffs para OpenRouter (ChatGPT)
+      # 6️⃣ Enviar diffs para OpenRouter
       - name: Send to OpenRouter
         id: chatgpt
         env:
@@ -54,7 +64,14 @@ jobs:
           DIFFS: ${{ steps.diffs.outputs.diffs }}
           AI_AGENT: ${{ secrets.AI_AGENT }}
         run: |
-          RESPONSE=$(curl -s https://openrouter.ai/api/v1/chat/completions \
+          if [ -z "$AI_AGENT" ]; then
+            echo "Erro: Segredo AI_AGENT não está definido"
+            exit 1
+          fi
+          echo "Enviando para OpenRouter..."
+          echo "Arquivos: $FILES"
+          echo "Diffs: $DIFFS"
+          RESPONSE=$(curl -s -w "\n%{http_code}" https://openrouter.ai/api/v1/chat/completions \
             -H "Authorization: Bearer $AI_AGENT" \
             -H "Content-Type: application/json" \
             -d "{
@@ -63,17 +80,27 @@ jobs:
                 {\"role\": \"system\", \"content\": \"Você é um analista de Pull Requests. Gere relatórios técnicos detalhados de forma clara e estruturada, incluindo resumo, novas features, impacto no sistema, possíveis melhorias de código, pontos de atenção em bugs/performance e um diagrama textual em Mermaid.\"},
                 {\"role\": \"user\", \"content\": \"Analise este Pull Request e gere um relatório completo.\n\nArquivos modificados:\n$FILES\n\nDiffs:\n$DIFFS\"}
               ]
-            }" | jq -r '.choices[0].message.content')
-
+            }")
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
+          RESPONSE_BODY=$(echo "$RESPONSE" | sed -e '$d')
+          echo "Status HTTP da API: $HTTP_STATUS"
+          echo "Resposta bruta da API: $RESPONSE_BODY"
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "Erro: API retornou status $HTTP_STATUS"
+            PARSED="Erro: Falha na chamada à API (status $HTTP_STATUS)"
+          else
+            PARSED=$(echo "$RESPONSE_BODY" | jq -r '.choices[0].message.content // "Erro: Sem resposta válida da API"')
+          fi
+          echo "Relatório parseado: $PARSED"
           echo "report<<EOF" >> $GITHUB_OUTPUT
-          echo "$RESPONSE" >> $GITHUB_OUTPUT
+          echo "$PARSED" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       # 7️⃣ Publicar relatório como comentário no PR
       - name: Post PR Analysis as comment
         uses: peter-evans/create-or-update-comment@v4
         with:
-          token: ${{ secrets.GHT }}
+          token: ${{ secrets.GITHUB_TOKEN }} # Mude para ${{ secrets.GHT }} se usar um PAT
           issue-number: ${{ github.event.pull_request.number }}
           body: |
             ## 🤖 PR Analyzer Report
