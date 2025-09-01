@@ -36,7 +36,7 @@ jobs:
           echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
 
       - name: Post PR summary as comment
-        uses: peter-evans/create-or-update-comment@v5
+        uses: peter-evans/create-or-update-comment@v4
         with:
           token: ${{ secrets.PR_ANALYZER }}
           issue-number: ${{ github.event.pull_request.number }}
