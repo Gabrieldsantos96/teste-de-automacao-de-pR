@@ -11,20 +11,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1️⃣ Checkout completo do repositório
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # necessário para comparar com main
 
+      # 2️⃣ Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '20'
 
+      # 3️⃣ Buscar o main atualizado para o diff
+      - name: Fetch main branch
+        run: |
+          git fetch origin main
+
+      # 4️⃣ Listar arquivos modificados
       - name: Get modified files
         id: files
         run: |
           FILES=$(git diff --name-only origin/main...HEAD --diff-filter=ACM)
           echo "files=$FILES" >> $GITHUB_OUTPUT
 
+      # 5️⃣ Coletar diffs completos
       - name: Collect file diffs
         id: diffs
         run: |
@@ -33,6 +44,7 @@ jobs:
           echo "$DIFFS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+      # 6️⃣ Enviar diffs para OpenRouter (ChatGPT)
       - name: Send to OpenRouter
         id: chatgpt
         run: |
@@ -42,13 +54,14 @@ jobs:
             -d '{
               "model": "openai/gpt-4o-mini",
               "messages": [
-                {"role": "system", "content": "Você é um analista de Pull Requests. Gere relatórios técnicos detalhados de forma clara e estruturada."},
-                {"role": "user", "content": "Analise este Pull Request. Gere:\n- Resumo geral das mudanças\n- Novas features\n- Impacto no sistema\n- Possíveis melhorias de código\n- Pontos de atenção em bugs/performance\n\nAqui estão os diffs:\n${{ steps.diffs.outputs.diffs }}"}
+                {"role": "system", "content": "Você é um analista de Pull Requests. Gere relatórios técnicos detalhados de forma clara e estruturada, incluindo resumo, novas features, impacto no sistema, possíveis melhorias de código e pontos de atenção em bugs/performance."},
+                {"role": "user", "content": "Analise este Pull Request e gere um relatório completo.\n\nArquivos modificados:\n${{ steps.files.outputs.files }}\n\nDiffs:\n${{ steps.diffs.outputs.diffs }}\n\nInclua também um diagrama textual do fluxo das mudanças em Mermaid."}
               ]
             }' | jq -r '.choices[0].message.content')
 
           echo "report=$RESPONSE" >> $GITHUB_OUTPUT
 
+      # 7️⃣ Publicar relatório como comentário no PR
       - name: Post PR Analysis as comment
         uses: peter-evans/create-or-update-comment@v4
         with:
