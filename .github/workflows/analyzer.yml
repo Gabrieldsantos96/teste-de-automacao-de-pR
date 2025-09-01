@@ -48,17 +48,21 @@ jobs:
       # 6️⃣ Enviar diffs para OpenRouter (ChatGPT)
       - name: Send to OpenRouter
         id: chatgpt
+        env:
+          FILES: ${{ steps.files.outputs.files }}
+          DIFFS: ${{ steps.diffs.outputs.diffs }}
+          AI_AGENT: ${{ secrets.AI_AGENT }}
         run: |
           RESPONSE=$(curl -s https://openrouter.ai/api/v1/chat/completions \
-            -H "Authorization: Bearer ${{ secrets.AI_AGENT }}" \
+            -H "Authorization: Bearer $AI_AGENT" \
             -H "Content-Type: application/json" \
-            -d '{
-              "model": "openai/gpt-4o-mini",
-              "messages": [
-                {"role": "system", "content": "Você é um analista de Pull Requests. Gere relatórios técnicos detalhados de forma clara e estruturada, incluindo resumo, novas features, impacto no sistema, possíveis melhorias de código, pontos de atenção em bugs/performance e um diagrama textual em Mermaid."},
-                {"role": "user", "content": "Analise este Pull Request e gere um relatório completo.\n\nArquivos modificados:\n${{ steps.files.outputs.files }}\n\nDiffs:\n${{ steps.diffs.outputs.diffs }}"}
+            -d "{
+              \"model\": \"openai/gpt-4o-mini\",
+              \"messages\": [
+                {\"role\": \"system\", \"content\": \"Você é um analista de Pull Requests. Gere relatórios técnicos detalhados de forma clara e estruturada, incluindo resumo, novas features, impacto no sistema, possíveis melhorias de código, pontos de atenção em bugs/performance e um diagrama textual em Mermaid.\"},
+                {\"role\": \"user\", \"content\": \"Analise este Pull Request e gere um relatório completo.\n\nArquivos modificados:\n$FILES\n\nDiffs:\n$DIFFS\"}
               ]
-            }' | jq -r '.choices[0].message.content')
+            }" | jq -r '.choices[0].message.content')
 
           echo "report<<EOF" >> $GITHUB_OUTPUT
           echo "$RESPONSE" >> $GITHUB_OUTPUT
