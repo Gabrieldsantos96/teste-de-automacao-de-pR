@@ -25,15 +25,16 @@ jobs:
 
       # 3️⃣ Buscar o main atualizado para o diff
       - name: Fetch main branch
-        run: |
-          git fetch origin main
+        run: git fetch origin main
 
       # 4️⃣ Listar arquivos modificados
       - name: Get modified files
         id: files
         run: |
           FILES=$(git diff --name-only origin/main...HEAD --diff-filter=ACM)
-          echo "files=$FILES" >> $GITHUB_OUTPUT
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$FILES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       # 5️⃣ Coletar diffs completos
       - name: Collect file diffs
@@ -54,12 +55,14 @@ jobs:
             -d '{
               "model": "openai/gpt-4o-mini",
               "messages": [
-                {"role": "system", "content": "Você é um analista de Pull Requests. Gere relatórios técnicos detalhados de forma clara e estruturada, incluindo resumo, novas features, impacto no sistema, possíveis melhorias de código e pontos de atenção em bugs/performance."},
-                {"role": "user", "content": "Analise este Pull Request e gere um relatório completo.\n\nArquivos modificados:\n${{ steps.files.outputs.files }}\n\nDiffs:\n${{ steps.diffs.outputs.diffs }}\n\nInclua também um diagrama textual do fluxo das mudanças em Mermaid."}
+                {"role": "system", "content": "Você é um analista de Pull Requests. Gere relatórios técnicos detalhados de forma clara e estruturada, incluindo resumo, novas features, impacto no sistema, possíveis melhorias de código, pontos de atenção em bugs/performance e um diagrama textual em Mermaid."},
+                {"role": "user", "content": "Analise este Pull Request e gere um relatório completo.\n\nArquivos modificados:\n${{ steps.files.outputs.files }}\n\nDiffs:\n${{ steps.diffs.outputs.diffs }}"}
               ]
             }' | jq -r '.choices[0].message.content')
 
-          echo "report=$RESPONSE" >> $GITHUB_OUTPUT
+          echo "report<<EOF" >> $GITHUB_OUTPUT
+          echo "$RESPONSE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       # 7️⃣ Publicar relatório como comentário no PR
       - name: Post PR Analysis as comment
