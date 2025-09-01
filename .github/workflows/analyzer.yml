@@ -67,7 +67,6 @@ jobs:
           echo "report<<EOF" >> $GITHUB_OUTPUT
           echo "$RESPONSE" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          
 
       # 7️⃣ Publicar relatório como comentário no PR
       - name: Post PR Analysis as comment
