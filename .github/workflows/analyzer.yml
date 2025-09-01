@@ -1,0 +1,45 @@
+name: PR Analyzer
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize]
+
+jobs:
+  analyze-pr:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Get list of modified files
+        id: files
+        run: |
+          FILES=$(git diff --name-only origin/main...HEAD --diff-filter=ACM)
+          echo "files=$FILES" >> $GITHUB_OUTPUT
+
+      - name: Generate PR summary
+        id: pr_summary
+        run: |
+          echo "Generating PR summary..."
+          FILES="${{ steps.files.outputs.files }}"
+          CHANGES_COUNT=$(echo "$FILES" | wc -w)
+          SUMMARY="This PR modifies $CHANGES_COUNT file(s): $FILES. "
+          SUMMARY="$SUMMARY General impact: review for potential bugs, performance issues, and areas affected by these changes."
+          echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
+
+      - name: Post PR summary as comment
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ### PR Analyzer Summary
+            ${{ steps.pr_summary.outputs.summary }}
