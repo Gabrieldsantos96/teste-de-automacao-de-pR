@@ -37,13 +37,14 @@ jobs:
 
       - name: Resumir PR com HuggingFace
         run: |
+          # Escapa o diff para JSON
+          ESCAPED_DIFF=$(jq -Rs . <<< "$PR_DIFF")
+
           # Faz a requisição para a API
           RAW_RESPONSE=$(curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.HUGGINGFACE_API_KEY }}" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"inputs\": \"Você é um revisor sênior de Pull Requests e deve gerar um relatório detalhado sobre este PR.\nDiff completo:\n${PR_DIFF}\"
-            }" \
+            -d "{\"inputs\": \"Você é um revisor sênior de Pull Requests e deve gerar um relatório detalhado sobre este PR.\nDiff completo: $ESCAPED_DIFF\"}" \
             https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2)
 
           # Mostra o retorno bruto para debug
