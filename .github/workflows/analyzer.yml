@@ -1,37 +1,46 @@
-name: PR Summary (Free HuggingFace)
+name: PR Summary
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize]
 
 jobs:
-  summarize:
+  pr-summary:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Get PR diff
         run: |
-          echo "PR_DIFF<<EOF" >> $GITHUB_ENV
-          gh pr diff ${{ github.event.pull_request.number }} >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "### Arquivos modificados:" > diff.txt
+          git diff --name-only origin/${{ github.base_ref }} > files.txt
+          cat files.txt >> diff.txt
+          echo -e "\n### Diff completo:" >> diff.txt
+          git diff origin/${{ github.base_ref }} >> diff.txt
 
       - name: Summarize with HuggingFace
         run: |
-          RESPONSE=$(curl -s -X POST \
+          PROMPT="Você é um revisor sênior de Pull Requests e deve atuar como uma mistura de arquiteto de software e analista de negócios. Gere um relatório detalhado, incluindo resumo, novas features, impacto no sistema, melhorias sugeridas, riscos de bugs/performance e um diagrama textual em Mermaid. Agora analise o seguinte PR diff:\n$(cat diff.txt)"
+          # chamada à API
+          curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.HUGGINGFACE_API_KEY }}" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"inputs\": \"Resuma este Pull Request:\n${PR_DIFF}\"
-            }" \
+            -d "{\"inputs\": \"$PROMPT\"}" \
             https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2 \
-            | jq -r '.[0].generated_text')
+            -o response.json
 
-          echo "### 🤖 Resumo do PR" > pr-summary.md
-          echo "$RESPONSE" >> pr-summary.md
+          echo "=== Resposta crua do HuggingFace salva em response.json ==="
+          cat response.json
+
+          # extrair texto de forma segura
+          SUMMARY=$(jq -r '.[0].generated_text // .[0].text // .' response.json)
+
+          echo "### 🤖 Relatório Detalhado do PR" > pr-summary.md
+          echo "$SUMMARY" >> pr-summary.md
 
           gh pr comment ${{ github.event.pull_request.number }} --body-file pr-summary.md
         env:
