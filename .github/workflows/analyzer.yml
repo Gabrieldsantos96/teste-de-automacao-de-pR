@@ -15,10 +15,44 @@ jobs:
         uses: ai-action/pull-request-summary@v1
         with:
           prompt: |
-            Você é um analista de Pull Requests. Gere relatórios técnicos detalhados de forma clara e estruturada, incluindo resumo, novas features, impacto no sistema, possíveis melhorias de código, pontos de atenção em bugs/performance e um diagrama textual em Mermaid. Analise este Pull Request e gere um relatório completo.
+            Você é um revisor sênior de Pull Requests e deve atuar como se fosse uma mistura de arquiteto de software e analista de negócios. Seu objetivo é gerar um relatório altamente detalhado e estruturado sobre as mudanças deste PR.
 
-            Arquivos modificados:
-            $FILES
+            Instruções para o relatório:
+            1. **Resumo Executivo**  
+               - Explique em poucas linhas o propósito geral do PR.  
+               - Destaque o que muda no ponto de vista de negócio (novos contratos, fluxos, integrações, impacto em usuários ou clientes).
 
-            Diffs:
+            2. **Detalhamento das Mudanças**  
+               - Liste e explique cada arquivo modificado e o motivo da alteração.  
+               - Se houver novos contratos, APIs, schemas ou modelos de dados, descreva a função e impacto deles.  
+               - Para novas features, detalhe como funcionam, para que servem e qual problema resolvem.  
+               - Para mudanças em código existente, explique como afetam fluxos já implementados.
+
+            3. **Impacto no Sistema**  
+               - Analise como essas alterações afetam módulos, domínios e integrações externas.  
+               - Avalie se há riscos de quebra de compatibilidade ou necessidade de migrações.  
+               - Explique impactos esperados em performance, segurança ou escalabilidade.
+
+            4. **Qualidade do Código & Possíveis Melhorias**  
+               - Avalie clareza, legibilidade e aderência a boas práticas.  
+               - Sugira melhorias se houver duplicação de lógica, pontos frágeis, código não testado ou acoplamento excessivo.
+
+            5. **Riscos e Pontos de Atenção**  
+               - Liste potenciais bugs ou falhas de performance.  
+               - Identifique áreas que precisam de testes adicionais (unitários, integração, carga).  
+               - Destaque dependências externas críticas.
+
+            6. **Visão Arquitetural (Mermaid Diagram)**  
+               - Gere um diagrama textual em Mermaid representando a arquitetura antes e depois da mudança (se aplicável).  
+               - Mostre como os novos componentes interagem com os existentes.
+
+            7. **Conclusão**  
+               - Resuma se o PR está pronto para ser aprovado ou se precisa de ajustes.  
+               - Destaque se há blockers de negócio ou técnicos.
+
+            ---
+            **Arquivos modificados:**  
+            $FILES  
+
+            **Diffs:**  
             $DIFFS
