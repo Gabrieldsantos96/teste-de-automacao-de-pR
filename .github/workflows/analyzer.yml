@@ -36,19 +36,31 @@ jobs:
           echo "EOF" >> $GITHUB_ENV
 
       - name: Resumir PR com HuggingFace
-        run: |
-          RESPONSE=$(curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.HUGGINGFACE_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"inputs\": \"Você é um revisor sênior de Pull Requests e deve atuar como se fosse uma mistura de arquiteto de software e analista de negócios. Seu objetivo é gerar um relatório altamente detalhado e estruturado sobre as mudanças deste PR.\n\nInstruções para o relatório:\n1. Resumo Executivo: explique o propósito do PR e impacto de negócio.\n2. Detalhamento das Mudanças: descreva cada arquivo, novas features, contratos, APIs e alterações existentes.\n3. Impacto no Sistema: riscos, performance, segurança e escalabilidade.\n4. Qualidade do Código & Melhorias: boas práticas, clareza, pontos de melhoria.\n5. Riscos e Pontos de Atenção: potenciais bugs, áreas que precisam de testes adicionais.\n\nDiff completo:\n${PR_DIFF}\"
-            }" \
-            https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2 \
-            | jq -r '.generated_text')
+    run: |
+      # Faz a requisição para a API
+      RAW_RESPONSE=$(curl -s -X POST \
+        -H "Authorization: Bearer ${{ secrets.HUGGINGFACE_API_KEY }}" \
+        -H "Content-Type: application/json" \
+        -d "{
+          \"inputs\": \"Você é um revisor sênior de Pull Requests e deve gerar um relatório detalhado sobre este PR.\nDiff completo:\n${PR_DIFF}\"
+        }" \
+        https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2)
 
-          echo "### 🤖 Resumo do PR" > pr-summary.md
-          echo "$RESPONSE" >> pr-summary.md
+      # Mostra o retorno bruto para debug
+      echo "=== RAW RESPONSE ==="
+      echo "$RAW_RESPONSE"
+      echo "==================="
 
-          gh pr comment ${{ github.event.pull_request.number }} --body-file pr-summary.md
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Tenta extrair o texto gerado
+      PARSED_RESPONSE=$(echo "$RAW_RESPONSE" | jq -r '.[0].generated_text // empty')
+      echo "=== PARSED RESPONSE ==="
+      echo "$PARSED_RESPONSE"
+
+      # Salva no arquivo para comentar no PR
+      echo "### 🤖 Resumo do PR" > pr-summary.md
+      echo "$PARSED_RESPONSE" >> pr-summary.md
+
+      # Comenta no PR
+      gh pr comment ${{ github.event.pull_request.number }} --body-file pr-summary.md
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
