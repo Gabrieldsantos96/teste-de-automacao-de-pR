@@ -10,7 +10,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,15 +23,14 @@ jobs:
           echo "BASE_BRANCH=$BASE_BRANCH" >> $GITHUB_ENV
 
       - name: Buscar branch base
-        run: git fetch origin $BASE_BRANCH
+        run: git fetch origin ${{ env.BASE_BRANCH }}
 
       - name: Gerar diff e lista de arquivos
         run: |
           echo "### Arquivos modificados:" > diff.txt
-          git diff --name-only origin/$BASE_BRANCH...HEAD > files.txt
-          cat files.txt >> diff.txt
+          git diff --name-only origin/${{ env.BASE_BRANCH }}...HEAD >> diff.txt
           echo -e "\n### Diff completo:" >> diff.txt
-          git diff origin/$BASE_BRANCH...HEAD >> diff.txt
+          git diff origin/${{ env.BASE_BRANCH }}...HEAD >> diff.txt
           echo "PR_DIFF<<EOF" >> $GITHUB_ENV
           cat diff.txt >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
@@ -46,7 +44,7 @@ jobs:
               \"inputs\": \"Você é um revisor sênior de Pull Requests e deve atuar como se fosse uma mistura de arquiteto de software e analista de negócios. Seu objetivo é gerar um relatório altamente detalhado e estruturado sobre as mudanças deste PR.\n\nInstruções para o relatório:\n1. Resumo Executivo: explique o propósito do PR e impacto de negócio.\n2. Detalhamento das Mudanças: descreva cada arquivo, novas features, contratos, APIs e alterações existentes.\n3. Impacto no Sistema: riscos, performance, segurança e escalabilidade.\n4. Qualidade do Código & Melhorias: boas práticas, clareza, pontos de melhoria.\n5. Riscos e Pontos de Atenção: potenciais bugs, áreas que precisam de testes adicionais.\n\nDiff completo:\n${PR_DIFF}\"
             }" \
             https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2 \
-            | jq -r '.[0].generated_text')
+            | jq -r '.generated_text')
 
           echo "### 🤖 Resumo do PR" > pr-summary.md
           echo "$RESPONSE" >> pr-summary.md
