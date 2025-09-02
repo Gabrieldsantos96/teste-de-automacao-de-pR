@@ -14,7 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # histórico completo necessário para diff
+          fetch-depth: 0
 
       - name: Detectar branch base
         id: base
@@ -31,28 +31,26 @@ jobs:
           git diff --name-only origin/${{ env.BASE_BRANCH }}...HEAD >> diff.txt
           echo -e "\n### Diff completo:" >> diff.txt
           git diff origin/${{ env.BASE_BRANCH }}...HEAD >> diff.txt
-          echo "PR_DIFF<<EOF" >> $GITHUB_ENV
-          cat diff.txt >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+
+      - name: Criar arquivo JSON para HuggingFace
+        run: |
+          jq -n --arg diff "$(cat diff.txt)" '{"inputs": "Você é um revisor sênior de Pull Requests e deve gerar um relatório detalhado sobre este PR.\nDiff completo:\n\($diff)"}' > payload.json
 
       - name: Resumir PR com HuggingFace
         run: |
-          # Escapa o diff para JSON
-          ESCAPED_DIFF=$(jq -Rs . <<< "$PR_DIFF")
-
-          # Faz a requisição para a API
+          # Faz a requisição para a API usando o arquivo JSON
           RAW_RESPONSE=$(curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.HUGGINGFACE_API_KEY }}" \
             -H "Content-Type: application/json" \
-            -d "{\"inputs\": \"Você é um revisor sênior de Pull Requests e deve gerar um relatório detalhado sobre este PR.\nDiff completo: $ESCAPED_DIFF\"}" \
+            -d @payload.json \
             https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2)
 
-          # Mostra o retorno bruto para debug
+          # Debug: mostra o retorno bruto
           echo "=== RAW RESPONSE ==="
           echo "$RAW_RESPONSE"
           echo "==================="
 
-          # Tenta extrair o texto gerado
+          # Extrai o texto gerado
           PARSED_RESPONSE=$(echo "$RAW_RESPONSE" | jq -r '.[0].generated_text // empty')
           echo "=== PARSED RESPONSE ==="
           echo "$PARSED_RESPONSE"
