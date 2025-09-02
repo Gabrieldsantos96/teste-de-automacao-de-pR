@@ -1,50 +1,71 @@
-name: PR Analyzer
+name: PR Summary (Free HuggingFace)
 
 on:
   pull_request:
-    branches:
-      - main
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
 
 jobs:
-  analyze-pr:
+  summarize:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # histórico completo necessário para diff
 
-      - name: Fetch main branch
-        run: git fetch origin main
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-
-      - name: Get list of modified files
-        id: files
+      - name: Detectar branch base
+        id: base
         run: |
-          FILES=$(git diff --name-only origin/main...HEAD --diff-filter=ACM)
-          echo "files=$FILES" >> $GITHUB_OUTPUT
+          BASE_BRANCH=$(jq -r .pull_request.base.ref "$GITHUB_EVENT_PATH")
+          echo "BASE_BRANCH=$BASE_BRANCH" >> $GITHUB_ENV
 
-      - name: Generate PR summary
-        id: pr_summary
+      - name: Buscar branch base
+        run: git fetch origin ${{ env.BASE_BRANCH }}
+
+      - name: Gerar diff e lista de arquivos
         run: |
-          echo "Generating PR summary..."
-          FILES="${{ steps.files.outputs.files }}"
-          CHANGES_COUNT=$(echo "$FILES" | wc -w)
-          SUMMARY="This PR modifies $CHANGES_COUNT file(s): $FILES. "
-          SUMMARY="$SUMMARY General impact: review for potential bugs, performance issues, and areas affected by these changes."
-          echo "summary=$SUMMARY" >> $GITHUB_OUTPUT
+          echo "### Arquivos modificados:" > diff.txt
+          git diff --name-only origin/${{ env.BASE_BRANCH }}...HEAD >> diff.txt
+          echo -e "\n### Diff completo:" >> diff.txt
+          git diff origin/${{ env.BASE_BRANCH }}...HEAD >> diff.txt
+          echo "PR_DIFF<<EOF" >> $GITHUB_ENV
+          cat diff.txt >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
-      - name: Post PR summary as comment
-        uses: peter-evans/create-or-update-comment@v4
-        with:
-          token: ${{ secrets.PR_ANALYZER }}
-          issue-number: ${{ github.event.pull_request.number }}
-          body: |
-            ### PR Analyzer Summary
-            ${{ steps.pr_summary.outputs.summary }}
+      - name: Resumir PR com HuggingFace
+        run: |
+          # Escapa o diff para JSON válido
+          PR_DIFF_JSON=$(cat <<EOF | jq -Rs .
+          ${PR_DIFF}
+          EOF
+          )
+
+          # Chamada para a API HuggingFace
+          RAW_RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.HUGGINGFACE_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"inputs\": $PR_DIFF_JSON}" \
+            https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2)
+
+          # Debug: mostra retorno bruto
+          echo "=== RAW RESPONSE ==="
+          echo "$RAW_RESPONSE"
+          echo "==================="
+
+          # Extrai o texto gerado
+          PARSED_RESPONSE=$(echo "$RAW_RESPONSE" | jq -r '.[0].generated_text // empty')
+          echo "=== PARSED RESPONSE ==="
+          echo "$PARSED_RESPONSE"
+
+          # Salva no arquivo para comentar no PR
+          echo "### 🤖 Resumo do PR" > pr-summary.md
+          echo "$PARSED_RESPONSE" >> pr-summary.md
+
+          # Comenta no PR
+          gh pr comment ${{ github.event.pull_request.number }} --body-file pr-summary.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
