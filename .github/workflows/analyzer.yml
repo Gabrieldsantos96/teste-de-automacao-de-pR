@@ -1,58 +1,38 @@
-name: PR Summary
+name: PR Summary (Free HuggingFace)
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
 
 jobs:
-  pr-summary:
+  summarize:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
     steps:
-      - name: PR Summary
-        uses: ai-action/pull-request-summary@v1
-        with:
-          prompt: |
-            Você é um revisor sênior de Pull Requests e deve atuar como se fosse uma mistura de arquiteto de software e analista de negócios. Seu objetivo é gerar um relatório altamente detalhado e estruturado sobre as mudanças deste PR.
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-            Instruções para o relatório:
-            1. **Resumo Executivo**  
-               - Explique em poucas linhas o propósito geral do PR.  
-               - Destaque o que muda no ponto de vista de negócio (novos contratos, fluxos, integrações, impacto em usuários ou clientes).
+      - name: Get PR diff
+        run: |
+          echo "PR_DIFF<<EOF" >> $GITHUB_ENV
+          gh pr diff ${{ github.event.pull_request.number }} >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-            2. **Detalhamento das Mudanças**  
-               - Liste e explique cada arquivo modificado e o motivo da alteração.  
-               - Se houver novos contratos, APIs, schemas ou modelos de dados, descreva a função e impacto deles.  
-               - Para novas features, detalhe como funcionam, para que servem e qual problema resolvem.  
-               - Para mudanças em código existente, explique como afetam fluxos já implementados.
+      - name: Summarize with HuggingFace
+        run: |
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.HUGGINGFACE_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"inputs\": \"Resuma este Pull Request:\n${PR_DIFF}\"
+            }" \
+            https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2 \
+            | jq -r '.[0].generated_text')
 
-            3. **Impacto no Sistema**  
-               - Analise como essas alterações afetam módulos, domínios e integrações externas.  
-               - Avalie se há riscos de quebra de compatibilidade ou necessidade de migrações.  
-               - Explique impactos esperados em performance, segurança ou escalabilidade.
+          echo "### 🤖 Resumo do PR" > pr-summary.md
+          echo "$RESPONSE" >> pr-summary.md
 
-            4. **Qualidade do Código & Possíveis Melhorias**  
-               - Avalie clareza, legibilidade e aderência a boas práticas.  
-               - Sugira melhorias se houver duplicação de lógica, pontos frágeis, código não testado ou acoplamento excessivo.
-
-            5. **Riscos e Pontos de Atenção**  
-               - Liste potenciais bugs ou falhas de performance.  
-               - Identifique áreas que precisam de testes adicionais (unitários, integração, carga).  
-               - Destaque dependências externas críticas.
-
-            6. **Visão Arquitetural (Mermaid Diagram)**  
-               - Gere um diagrama textual em Mermaid representando a arquitetura antes e depois da mudança (se aplicável).  
-               - Mostre como os novos componentes interagem com os existentes.
-
-            7. **Conclusão**  
-               - Resuma se o PR está pronto para ser aprovado ou se precisa de ajustes.  
-               - Destaque se há blockers de negócio ou técnicos.
-
-            ---
-            **Arquivos modificados:**  
-            $FILES  
-
-            **Diffs:**  
-            $DIFFS
+          gh pr comment ${{ github.event.pull_request.number }} --body-file pr-summary.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
