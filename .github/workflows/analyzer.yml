@@ -15,7 +15,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # necessário para diff completo
+          fetch-depth: 0  # histórico completo necessário para diff
 
       - name: Detectar branch base
         id: base
@@ -32,47 +32,40 @@ jobs:
           git diff --name-only origin/${{ env.BASE_BRANCH }}...HEAD >> diff.txt
           echo -e "\n### Diff completo:" >> diff.txt
           git diff origin/${{ env.BASE_BRANCH }}...HEAD >> diff.txt
-          # Escapa caracteres especiais para JSON
-          DIFF_ESCAPED=$(jq -Rs . < diff.txt)
-          echo "PR_DIFF=$DIFF_ESCAPED" >> $GITHUB_ENV
-
-      - name: Teste simples de HuggingFace
-        run: |
-          echo "=== TESTE SIMPLES DA API ==="
-          RAW_TEST=$(curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.HUGGINGFACE_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "inputs": "Resuma este texto: Olá mundo, este é um teste da API HuggingFace."
-            }' \
-            https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2)
-          echo "$RAW_TEST"
-          TEST_PARSED=$(echo "$RAW_TEST" | jq -r '.[0].generated_text // empty')
-          echo "$TEST_PARSED"
-          echo "============================"
+          echo "PR_DIFF<<EOF" >> $GITHUB_ENV
+          cat diff.txt >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: Resumir PR com HuggingFace
         run: |
-          echo "=== Chamando HuggingFace com diff do PR ==="
+          # Escapa o diff para JSON válido
+          PR_DIFF_JSON=$(cat <<EOF | jq -Rs .
+          ${PR_DIFF}
+          EOF
+          )
+
+          # Chamada para a API HuggingFace
           RAW_RESPONSE=$(curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.HUGGINGFACE_API_KEY }}" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"inputs\": \"Você é um revisor sênior de Pull Requests e deve gerar um relatório detalhado sobre este PR.\nDiff completo:\n${PR_DIFF}\"
-            }" \
+            -d "{\"inputs\": $PR_DIFF_JSON}" \
             https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2)
 
+          # Debug: mostra retorno bruto
           echo "=== RAW RESPONSE ==="
           echo "$RAW_RESPONSE"
           echo "==================="
 
+          # Extrai o texto gerado
           PARSED_RESPONSE=$(echo "$RAW_RESPONSE" | jq -r '.[0].generated_text // empty')
           echo "=== PARSED RESPONSE ==="
           echo "$PARSED_RESPONSE"
 
+          # Salva no arquivo para comentar no PR
           echo "### 🤖 Resumo do PR" > pr-summary.md
           echo "$PARSED_RESPONSE" >> pr-summary.md
 
+          # Comenta no PR
           gh pr comment ${{ github.event.pull_request.number }} --body-file pr-summary.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
